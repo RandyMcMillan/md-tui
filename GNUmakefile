@@ -1,4 +1,6 @@
 
+
+
 ifeq ($(project),)
 PROJECT_NAME                            := $(notdir $(PWD))
 else
@@ -30,6 +32,9 @@ export TRIPLET
 endif
 
 HOMEBREW                                :=$(shell which brew || false)
+
+NODE_VERSION=18
+export NODE_VERSION
 
 RUSTUP_INIT_SKIP_PATH_CHECK=yes
 TOOLCHAIN=stable
@@ -183,34 +188,37 @@ more:## 	more help
 initialize:## 	ensure submodules exist
 	git submodule update --init --recursive
 
-## .ONESHELL:
-## docker-start:venv
-## ##docker-start
-## ##	start docker on Linux or Darwin
-## 	@echo CI=$(CI)
-## 	@touch requirements.txt && $(PYTHON3) -m pip install    -q -r requirements.txt
-## 	@touch requirements.txt && $(PYTHON3) -m pip install -U       virtualenv
-## 	@test -d .venv || $(PYTHON3) -m virtualenv .venv
-## 	@( \
-## 	   . .venv/bin/activate; pip install -q -r requirements.txt; \
-## 	   python3 -m pip install -q pipenv \
-## 	   pip install -q --upgrade pip; \
-## 	);
-## 	@( \
-## 	    while ! docker system info > /dev/null 2>&1; do\
-## 	    echo 'Waiting for docker to start...';\
-## 	    if [[ '$(OS)' == 'Linux' ]]; then\
-## 	     type -P systemctl && systemctl restart docker.service || type -P service && service restart docker;\
-## 	    fi;\
-## 	    if [[ '$(OS)' == 'Darwin' ]]; then\
-## 	    echo $(CI);\
-## 	    if [[ '$(CI)' != 'True' ]]; then\
-## 	     type -P docker && open --background -a /./Applications/Docker.app/Contents/MacOS/Docker || brew install --cask docker;\
-## 	    fi;\
-## 	    fi;\
-## 	sleep 1;\
-## 	done\
-## 	)
+.ONESHELL:
+venv:
+	@pipx install virtualenv --force -q || \
+	$(shell which python3) -m venv .venv 2>/dev/null || \
+	virtualenv .venv 2>/denv/null || true
+docker-start: venv
+##docker-start
+##	start docker on Linux or Darwin
+	@echo CI=$(CI)
+	@touch requirements.txt
+	@test -d .venv || $(shell which python3) -m virtualenv .venv
+	@( \
+	   . .venv/bin/activate; pip install -r requirements.txt; \
+	   python3 -m pip install -q pipenv || pipx install pipenv \
+	   pip install -q --upgrade pip; \
+	);
+	@( \
+	    while ! docker system info > /dev/null 2>&1; do\
+	    echo 'Waiting for docker to start...';\
+	    if [[ '$(OS)' == 'Linux' ]]; then\
+	     type -P systemctl && systemctl restart docker.service || type -P service && service restart docker;\
+	    fi;\
+	    if [[ '$(OS)' == 'Darwin' ]]; then\
+	    echo $(CI);\
+	    if [[ '$(CI)' != 'True' ]]; then\
+	     type -P docker && open --background -a /./Applications/Docker.app || brew install --cask docker;\
+	    fi;\
+	    fi;\
+	sleep 1;\
+	done\
+	)
 
 detect:## 	install sequence got Darwin and Linux
 ##detect
@@ -449,8 +457,10 @@ tags: tag
 .ONESHELL:
 nvm: ## 	nvm
 	@echo "$(NODE_VERSION)" > .nvmrc
-	@curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/master/install.sh | bash || git pull -C $(HOME)/.nvm && export NVM_DIR="$(HOME)/.nvm" && [ -s "$(NVM_DIR)/nvm.sh" ] && \. "$(NVM_DIR)/nvm.sh" && [ -s "$(NVM_DIR)/bash_completion" ] && \. "$(NVM_DIR)/bash_completion"  && nvm install $(NODE_VERSION) && nvm use $(NODE_VERSION)
-	@source ~/.bashrc && nvm alias $(NODE_ALIAS) $(NODE_VERSION) &
+	@curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash || \
+		wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash || \
+		git pull -C $(HOME)/.nvm && export NVM_DIR="$(HOME)/.nvm" && [ -s "$(NVM_DIR)/nvm.sh" ] && \. "$(NVM_DIR)/nvm.sh" && [ -s "$(NVM_DIR)/bash_completion" ] && \. "$(NVM_DIR)/bash_completion"  && nvm install $(NODE_VERSION) && nvm use $(NODE_VERSION)
+	@. $(HOME)/.nvm/nvm.sh &>/dev/null && nvm install $(shell cat .nvmrc) &>/dev/null && nvm use
 
 nvm-clean: ## 	nvm-clean
 	@rm -rf ~/.nvm
@@ -463,7 +473,6 @@ nvm-clean: ## 	nvm-clean
 -include clean.mk
 -include cargo.mk
 -include tests.mk
--include go.mk
 
 # vim: set noexpandtab:
 # vim: set setfiletype make
